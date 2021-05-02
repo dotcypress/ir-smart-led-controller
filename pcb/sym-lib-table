@@ -1,0 +1,3 @@
+(sym_lib_table
+  (lib (name "ir-smart-led-controller")(type "KiCad")(uri "${KIPRJMOD}/ir-smart-led-controller.kicad_sym")(options "")(descr ""))
+)

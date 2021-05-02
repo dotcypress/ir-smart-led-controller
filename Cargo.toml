@@ -1,0 +1,36 @@
+[package]
+name = "ir-smart-led-controller"
+authors = ["Vitaly Domnikov <oss@vitaly.codes>"]
+edition = "2018"
+license = "MIT/Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/dotcypress/ir-smart-led-controller"
+version = "0.0.0"
+
+[dependencies]
+cortex-m = "0.7.1"
+cortex-m-rt = "0.6.10"
+cortex-m-rtic = "0.5.5"
+infrared = "0.11.0"
+panic-halt = "0.2.0"
+smart-leds = "0.3.0"
+stm32g0xx-hal = { version = "0.1.0", features = ["rt", "stm32g031"] }
+ws2812-spi = { version = "0.3.0", features = [] }
+defmt = "0.2.0"
+defmt-rtt = "0.2.0"
+
+[profile.release]
+debug = false
+codegen-units = 1
+incremental = false
+lto = true
+
+[features]
+default = ["defmt-default"]
+
+defmt-default = []
+defmt-trace = []
+defmt-debug = []
+defmt-info = []
+defmt-warn = []
+defmt-error = []
