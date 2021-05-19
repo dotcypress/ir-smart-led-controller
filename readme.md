@@ -8,7 +8,7 @@ IR Remote Controller for WS2812(or analog) LED Strip.
 - [Gerber files](pcb/ir-smart-led-controller.zip)
 - [BOM](pcb/ir-smart-led-controller.csv)
 
-<img width="500" alt=ir-smart-led-controller" src="pcb/ir-smart-led-controller.png" />
+<img width="500" src="pcb/ir-smart-led-controller.png" >
 
 ## License
 
