@@ -78,8 +78,8 @@ const APP: () = {
     fn sample_timer_tick(ctx: sample_timer_tick::Context) {
         match ctx.resources.ir.poll() {
             Ok(Some(cmd)) if cmd.addr == IR_ADDRESS => {
-                defmt::info!("IR Command: {:x}", cmd.cmd);
-                ctx.resources.strip.on_command(cmd.cmd);
+                defmt::trace!("IR Command: {:x}", cmd.cmd);
+                ctx.resources.strip.handle_command(cmd.cmd);
             }
             _ => {}
         }
@@ -88,7 +88,7 @@ const APP: () = {
 
     #[task(binds = TIM16, resources = [animation_timer, strip])]
     fn animation_timer_tick(ctx: animation_timer_tick::Context) {
-        ctx.resources.strip.on_frame();
+        ctx.resources.strip.handle_frame();
         ctx.resources.animation_timer.clear_irq();
     }
 

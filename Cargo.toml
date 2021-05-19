@@ -5,7 +5,7 @@ edition = "2018"
 license = "MIT/Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/dotcypress/ir-smart-led-controller"
-version = "0.0.0"
+version = "0.0.1"
 
 [dependencies]
 cortex-m = "0.7.1"
@@ -26,7 +26,7 @@ incremental = false
 lto = true
 
 [features]
-default = ["defmt-default"]
+default = ["defmt-trace"]
 
 defmt-default = []
 defmt-trace = []

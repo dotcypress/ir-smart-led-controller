@@ -31,11 +31,11 @@ impl Strip {
         }
     }
 
-    pub fn on_frame(&mut self) {
+    pub fn handle_frame(&mut self) {
         self.frame += 1;
     }
 
-    pub fn on_command(&mut self, command: u8) {
+    pub fn handle_command(&mut self, command: u8) {
         match command {
             0 => self.luma_up(),
             1 => self.luma_down(),
