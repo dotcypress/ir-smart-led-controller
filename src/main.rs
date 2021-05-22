@@ -1,6 +1,6 @@
 #![no_std]
 #![no_main]
-#![deny(warnings)]
+// #![deny(warnings)]
 
 extern crate cortex_m;
 extern crate cortex_m_rt as rt;
@@ -11,10 +11,11 @@ extern crate stm32g0xx_hal as hal;
 mod strip;
 
 use crate::strip::*;
-use hal::gpio::*;
-use hal::prelude::*;
+use hal::analog::adc::{SampleTime, VTemp};
 use hal::time::*;
 use hal::timer::*;
+use hal::{analog::adc::Adc, prelude::*};
+use hal::{gpio::*, watchdog::IndependedWatchdog};
 use hal::{rcc, spi, stm32};
 use infrared::{protocols::Nec, PeriodicReceiver};
 use smart_leds::SmartLedsWrite;
@@ -40,6 +41,9 @@ const APP: () = {
         ir: PeriodicReceiver<Nec, IrPin>,
         link: Ws2812<SpiLink>,
         strip: Strip,
+        watchdog: IndependedWatchdog,
+        vtemp: VTemp,
+        adc: Adc,
     }
 
     #[init]
@@ -64,10 +68,22 @@ const APP: () = {
         animation_timer.start(STRIP_FPS);
         animation_timer.listen();
 
+        let mut adc = ctx.device.ADC.constrain(&mut rcc);
+        adc.set_sample_time(SampleTime::T_160);
+
+        let mut vtemp = VTemp::new();
+        vtemp.enable(&mut adc);
+
+        let mut watchdog = ctx.device.IWDG.constrain();
+        watchdog.start(100.ms());
+
         defmt::info!("Init completed");
         init::LateResources {
+            adc,
             animation_timer,
             sample_timer,
+            vtemp,
+            watchdog,
             strip: Strip::new(),
             link: Ws2812::new(spi),
             ir: PeriodicReceiver::new(port_a.pa11.into_floating_input(), IR_SAMPLERATE.0),
@@ -86,15 +102,27 @@ const APP: () = {
         ctx.resources.sample_timer.clear_irq();
     }
 
-    #[task(binds = TIM16, resources = [animation_timer, strip])]
+    #[task(binds = TIM16, resources = [animation_timer, strip, watchdog])]
     fn animation_timer_tick(ctx: animation_timer_tick::Context) {
+        ctx.resources.watchdog.feed();
         ctx.resources.strip.handle_frame();
         ctx.resources.animation_timer.clear_irq();
     }
 
-    #[idle(resources = [strip, link])]
+    #[idle(resources = [adc, vtemp, strip, link])]
     fn idle(mut ctx: idle::Context) -> ! {
         loop {
+            let temp: u32 = ctx
+                .resources
+                .adc
+                .read(ctx.resources.vtemp)
+                .expect("temperature read failed");
+
+            let temp_c = temp / 42;
+            if temp_c > 60 {
+                ctx.resources.strip.lock(|strip| strip.handle_overheat());
+            }
+
             let animation = ctx.resources.strip.lock(|strip| strip.animate());
             ctx.resources.link.write(animation).ok();
         }

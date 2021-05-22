@@ -5,6 +5,7 @@ pub struct Strip {
     color: IndexedColor,
     frame: usize,
     on: bool,
+    overheat: bool,
 }
 
 impl Default for Strip {
@@ -20,15 +21,28 @@ impl Strip {
             color: IndexedColor::default(),
             on: false,
             frame: 0,
+            overheat: false,
         }
     }
 
     pub fn animate(&self) -> Animation {
         if self.on {
-            Animation::new(self.animation_kind, self.frame, self.color)
+            if self.overheat {
+                Animation::new(
+                    AnimationKind::Overheat,
+                    0,
+                    IndexedColor { luma: 1, code: 1 },
+                )
+            } else {
+                Animation::new(self.animation_kind, self.frame, self.color)
+            }
         } else {
             Animation::new(AnimationKind::Static, 0, IndexedColor::OFF)
         }
+    }
+
+    pub fn handle_overheat(&mut self) {
+        self.overheat = true;
     }
 
     pub fn handle_frame(&mut self) {
@@ -59,6 +73,7 @@ impl Strip {
         self.animation_kind = AnimationKind::Static;
         self.color = IndexedColor::default();
         self.on = true;
+        self.overheat = false;
     }
 
     fn switch_off(&mut self) {
@@ -87,6 +102,7 @@ pub enum AnimationKind {
     Strobe,
     Fade,
     Smooth,
+    Overheat,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -197,6 +213,7 @@ impl Iterator for Animation {
                 let luma = luma.saturating_sub(5 - (self.frame >> 1) % 6);
                 self.color.with_luma(luma)
             }
+            AnimationKind::Overheat if self.frame % 10 < 5 => self.color,
             _ => IndexedColor::OFF,
         };
 
