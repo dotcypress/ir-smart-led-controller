@@ -1,6 +1,6 @@
 #![no_std]
 #![no_main]
-// #![deny(warnings)]
+#![deny(warnings)]
 
 extern crate cortex_m;
 extern crate cortex_m_rt as rt;
@@ -27,6 +27,7 @@ pub const STRIP_SIZE: usize = 248;
 pub const STRIP_FPS: Hertz = Hertz(24);
 pub const IR_ADDRESS: u8 = 0;
 pub const IR_SAMPLERATE: Hertz = Hertz(20_000);
+pub const OVERHEAT_TEMP: u32 = 60;
 
 pub type IrPin = gpioa::PA11<Input<Floating>>;
 pub type SampleTimer = Timer<stm32::TIM14>;
@@ -69,13 +70,13 @@ const APP: () = {
         animation_timer.listen();
 
         let mut adc = ctx.device.ADC.constrain(&mut rcc);
-        adc.set_sample_time(SampleTime::T_160);
+        adc.set_sample_time(SampleTime::T_20);
 
         let mut vtemp = VTemp::new();
         vtemp.enable(&mut adc);
 
         let mut watchdog = ctx.device.IWDG.constrain();
-        watchdog.start(100.ms());
+        watchdog.start(10.hz());
 
         defmt::info!("Init completed");
         init::LateResources {
@@ -112,14 +113,14 @@ const APP: () = {
     #[idle(resources = [adc, vtemp, strip, link])]
     fn idle(mut ctx: idle::Context) -> ! {
         loop {
-            let temp: u32 = ctx
+            let temp_raw: u32 = ctx
                 .resources
                 .adc
                 .read(ctx.resources.vtemp)
                 .expect("temperature read failed");
 
-            let temp_c = temp / 42;
-            if temp_c > 60 {
+            let temp_c = temp_raw / 42;
+            if temp_c > OVERHEAT_TEMP {
                 ctx.resources.strip.lock(|strip| strip.handle_overheat());
             }
 

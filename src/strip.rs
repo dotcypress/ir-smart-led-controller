@@ -25,19 +25,15 @@ impl Strip {
         }
     }
 
+    pub fn on(&self) -> bool {
+        self.on
+    }
+
     pub fn animate(&self) -> Animation {
-        if self.on {
-            if self.overheat {
-                Animation::new(
-                    AnimationKind::Overheat,
-                    0,
-                    IndexedColor { luma: 1, code: 1 },
-                )
-            } else {
-                Animation::new(self.animation_kind, self.frame, self.color)
-            }
-        } else {
-            Animation::new(AnimationKind::Static, 0, IndexedColor::OFF)
+        match (self.on, self.overheat) {
+            (true, false) => Animation::new(self.animation_kind, self.frame, self.color),
+            (true, true) => Animation::new(AnimationKind::Overheat, self.frame, IndexedColor::RED),
+            _ => Animation::new(AnimationKind::Static, 0, IndexedColor::OFF),
         }
     }
 
@@ -116,6 +112,8 @@ impl IndexedColor {
         code: usize::MAX,
         luma: 0,
     };
+
+    pub const RED: Self = Self { code: 1, luma: 0 };
 
     const PALETTE: [(u8, u8, u8); 16] = [
         (0xFF, 0xFF, 0xFF),
@@ -213,7 +211,10 @@ impl Iterator for Animation {
                 let luma = luma.saturating_sub(5 - (self.frame >> 1) % 6);
                 self.color.with_luma(luma)
             }
-            AnimationKind::Overheat if self.frame % 10 < 5 => self.color,
+            AnimationKind::Overheat if self.frame % 10 < 5 => {
+                self.cursor = 1;
+                self.color
+            }
             _ => IndexedColor::OFF,
         };
 
