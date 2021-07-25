@@ -27,7 +27,7 @@ pub const STRIP_SIZE: usize = 248;
 pub const STRIP_FPS: Hertz = Hertz(24);
 pub const IR_ADDRESS: u8 = 0;
 pub const IR_SAMPLERATE: Hertz = Hertz(20_000);
-pub const OVERHEAT_TEMP: u32 = 60;
+pub const OVERHEAT_TEMP_RAW: u32 = 1004;
 
 pub type IrPin = gpioa::PA11<Input<Floating>>;
 pub type SampleTimer = Timer<stm32::TIM14>;
@@ -93,6 +93,7 @@ const APP: () = {
 
     #[task(binds = TIM14, resources = [ir, sample_timer, strip])]
     fn sample_timer_tick(ctx: sample_timer_tick::Context) {
+        ctx.resources.sample_timer.clear_irq();
         match ctx.resources.ir.poll() {
             Ok(Some(cmd)) if cmd.addr == IR_ADDRESS => {
                 defmt::trace!("IR Command: {:x}", cmd.cmd);
@@ -100,32 +101,29 @@ const APP: () = {
             }
             _ => {}
         }
-        ctx.resources.sample_timer.clear_irq();
     }
 
     #[task(binds = TIM16, resources = [animation_timer, strip, watchdog])]
     fn animation_timer_tick(ctx: animation_timer_tick::Context) {
-        ctx.resources.watchdog.feed();
-        ctx.resources.strip.handle_frame();
         ctx.resources.animation_timer.clear_irq();
+        ctx.resources.strip.handle_frame();
+        ctx.resources.watchdog.feed();
     }
 
     #[idle(resources = [adc, vtemp, strip, link])]
     fn idle(mut ctx: idle::Context) -> ! {
         loop {
+            let animation = ctx.resources.strip.lock(|strip| strip.animate());
+            ctx.resources.link.write(animation).ok();
+
             let temp_raw: u32 = ctx
                 .resources
                 .adc
                 .read(ctx.resources.vtemp)
                 .expect("temperature read failed");
-
-            let temp_c = temp_raw / 42;
-            if temp_c > OVERHEAT_TEMP {
+            if temp_raw > OVERHEAT_TEMP_RAW {
                 ctx.resources.strip.lock(|strip| strip.handle_overheat());
             }
-
-            let animation = ctx.resources.strip.lock(|strip| strip.animate());
-            ctx.resources.link.write(animation).ok();
         }
     }
 };

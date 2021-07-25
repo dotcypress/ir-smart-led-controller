@@ -212,8 +212,9 @@ impl Iterator for Animation {
                 self.color.with_luma(luma)
             }
             AnimationKind::Overheat if self.frame % 10 < 5 => {
-                self.cursor = 1;
-                self.color
+                let color = self.color;
+                self.color = IndexedColor::OFF;
+                color
             }
             _ => IndexedColor::OFF,
         };
