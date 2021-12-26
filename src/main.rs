@@ -13,6 +13,7 @@ mod strip;
 use crate::strip::*;
 use hal::analog::adc::{SampleTime, VTemp};
 use hal::time::*;
+use hal::timer::delay::Delay;
 use hal::timer::*;
 use hal::{analog::adc::Adc, prelude::*};
 use hal::{gpio::*, watchdog::IndependedWatchdog};
@@ -23,11 +24,11 @@ use ws2812_spi::Ws2812;
 
 pub use defmt_rtt as _;
 
-pub const STRIP_SIZE: usize = 248;
+pub const STRIP_SIZE: usize = 64;
 pub const STRIP_FPS: Hertz = Hertz(24);
 pub const IR_ADDRESS: u8 = 0;
 pub const IR_SAMPLERATE: Hertz = Hertz(20_000);
-pub const OVERHEAT_TEMP_RAW: u32 = 1004;
+pub const OVERHEAT_TEMP_RAW: u32 = 1400;
 
 pub type IrPin = gpioa::PA11<Input<Floating>>;
 pub type SampleTimer = Timer<stm32::TIM14>;
@@ -35,20 +36,28 @@ pub type AnimationTimer = Timer<stm32::TIM16>;
 pub type SpiLink = spi::Spi<stm32::SPI1, (spi::NoSck, spi::NoMiso, gpioa::PA12<DefaultMode>)>;
 
 #[rtic::app(device = hal::stm32, peripherals = true)]
-const APP: () = {
-    struct Resources {
+mod app {
+    use super::*;
+
+    #[shared]
+    struct Shared {
+        strip: Strip,
+    }
+
+    #[local]
+    struct Local {
+        adc: Adc,
         animation_timer: AnimationTimer,
-        sample_timer: SampleTimer,
+        delay: Delay<stm32::TIM1>,
         ir: PeriodicReceiver<Nec, IrPin>,
         link: Ws2812<SpiLink>,
-        strip: Strip,
-        watchdog: IndependedWatchdog,
+        sample_timer: SampleTimer,
         vtemp: VTemp,
-        adc: Adc,
+        watchdog: IndependedWatchdog,
     }
 
     #[init]
-    fn init(ctx: init::Context) -> init::LateResources {
+    fn init(ctx: init::Context) -> (Shared, Local, init::Monotonics) {
         let pll_cfg = rcc::PllConfig::with_hsi(4, 24, 2);
         let rcc_cfg = rcc::Config::pll().pll_cfg(pll_cfg);
         let mut rcc = ctx.device.RCC.freeze(rcc_cfg);
@@ -60,6 +69,8 @@ const APP: () = {
             3.mhz(),
             &mut rcc,
         );
+
+        let delay = ctx.device.TIM1.delay(&mut rcc);
 
         let mut sample_timer = ctx.device.TIM14.timer(&mut rcc);
         sample_timer.start(IR_SAMPLERATE);
@@ -77,53 +88,65 @@ const APP: () = {
 
         let mut watchdog = ctx.device.IWDG.constrain();
         watchdog.start(10.hz());
-
+        let ir = PeriodicReceiver::new(port_a.pa11.into_floating_input(), IR_SAMPLERATE.0);
+        let link = Ws2812::new(spi);
         defmt::info!("Init completed");
-        init::LateResources {
-            adc,
-            animation_timer,
-            sample_timer,
-            vtemp,
-            watchdog,
-            strip: Strip::new(),
-            link: Ws2812::new(spi),
-            ir: PeriodicReceiver::new(port_a.pa11.into_floating_input(), IR_SAMPLERATE.0),
-        }
+        (
+            Shared {
+                strip: Strip::new(),
+            },
+            Local {
+                adc,
+                animation_timer,
+                delay,
+                ir,
+                link,
+                sample_timer,
+                vtemp,
+                watchdog,
+            },
+            init::Monotonics(),
+        )
     }
 
-    #[task(binds = TIM14, resources = [ir, sample_timer, strip])]
+    #[task(binds = TIM14, local = [ir, sample_timer], shared = [strip])]
     fn sample_timer_tick(ctx: sample_timer_tick::Context) {
-        ctx.resources.sample_timer.clear_irq();
-        match ctx.resources.ir.poll() {
+        ctx.local.sample_timer.clear_irq();
+        match ctx.local.ir.poll() {
             Ok(Some(cmd)) if cmd.addr == IR_ADDRESS => {
-                defmt::trace!("IR Command: {:x}", cmd.cmd);
-                ctx.resources.strip.handle_command(cmd.cmd);
+                defmt::trace!("IR Command: {} {} {}", cmd.addr, cmd.cmd, cmd.repeat);
+                let mut strip = ctx.shared.strip;
+                strip.lock(|strip| strip.handle_command(cmd.cmd));
             }
             _ => {}
         }
     }
 
-    #[task(binds = TIM16, resources = [animation_timer, strip, watchdog])]
+    #[task(binds = TIM16, local = [animation_timer, watchdog], shared = [strip])]
     fn animation_timer_tick(ctx: animation_timer_tick::Context) {
-        ctx.resources.animation_timer.clear_irq();
-        ctx.resources.strip.handle_frame();
-        ctx.resources.watchdog.feed();
+        ctx.local.animation_timer.clear_irq();
+        let mut strip = ctx.shared.strip;
+        strip.lock(|strip| strip.handle_frame());
+        ctx.local.watchdog.feed();
     }
 
-    #[idle(resources = [adc, vtemp, strip, link])]
-    fn idle(mut ctx: idle::Context) -> ! {
+    #[idle(local = [adc,delay,  vtemp, link], shared = [strip])]
+    fn idle(ctx: idle::Context) -> ! {
+        let mut strip = ctx.shared.strip;
         loop {
-            let animation = ctx.resources.strip.lock(|strip| strip.animate());
-            ctx.resources.link.write(animation).ok();
+            let animation = strip.lock(|strip| strip.animate());
+            ctx.local.link.write(animation).ok();
+            ctx.local.delay.delay(1.ms());
 
             let temp_raw: u32 = ctx
-                .resources
+                .local
                 .adc
-                .read(ctx.resources.vtemp)
+                .read(ctx.local.vtemp)
                 .expect("temperature read failed");
             if temp_raw > OVERHEAT_TEMP_RAW {
-                ctx.resources.strip.lock(|strip| strip.handle_overheat());
+                defmt::info!("Overheat {}", temp_raw);
+                strip.lock(|strip| strip.handle_overheat());
             }
         }
     }
-};
+}
