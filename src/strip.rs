@@ -17,9 +17,9 @@ impl Default for Strip {
 impl Strip {
     pub fn new() -> Self {
         Self {
-            animation_kind: AnimationKind::Static,
+            animation_kind: AnimationKind::Fire,
             color: IndexedColor::default(),
-            on: false,
+            on: true,
             frame: 0,
             overheat: false,
         }
@@ -47,26 +47,31 @@ impl Strip {
 
     pub fn handle_command(&mut self, command: u8) {
         match command {
-            0 => self.luma_up(),
-            1 => self.luma_down(),
-            2 => self.switch_off(),
-            3 => self.switch_on(),
-            7 => self.color = self.color.with_code(0),
+            0 => self.switch_off(),
+            13 => self.switch_off(),
+            1 => self.switch_on(),
+            2 => self.animation_kind = AnimationKind::Static,
+            22 => self.switch_on(),
+            24 => self.luma_up(),
+            82 => self.luma_down(),
+            69 => self.color = self.color.with_code(7),
+            70 => self.color = self.color.with_code(10),
+            71 => self.color = self.color.with_code(13),
+            68 => self.color = self.color.with_code(14),
+            64 => self.color = self.color.with_code(15),
+            67 => self.color = self.color.with_code(16),
             11 => self.animation_kind = AnimationKind::Flash,
             15 => self.animation_kind = AnimationKind::Strobe,
             19 => self.animation_kind = AnimationKind::Fade,
             23 => self.animation_kind = AnimationKind::Smooth,
-            _ => {
-                let row = command / 4;
-                let column = (command - row * 4) % 3;
-                let color_code = column + (row - 1) * 3 + 1;
-                self.color = self.color.with_code(color_code as usize);
+            x => {
+                self.color = self.color.with_code(x as usize % 16);
             }
         }
     }
 
     fn switch_on(&mut self) {
-        self.animation_kind = AnimationKind::Static;
+        self.animation_kind = AnimationKind::Fire;
         self.color = IndexedColor::default();
         self.on = true;
         self.overheat = false;
@@ -98,6 +103,7 @@ pub enum AnimationKind {
     Strobe,
     Fade,
     Smooth,
+    Fire,
     Overheat,
 }
 
@@ -115,23 +121,33 @@ impl IndexedColor {
 
     pub const RED: Self = Self { code: 1, luma: 0 };
 
-    const PALETTE: [(u8, u8, u8); 16] = [
-        (0xFF, 0xFF, 0xFF),
-        (0xFF, 0x00, 0x00),
-        (0x00, 0xFF, 0x00),
-        (0x00, 0x00, 0xFF),
-        (0xD3, 0x2F, 0x2F),
-        (0x8B, 0xC3, 0x4A),
-        (0x03, 0xA9, 0xF4),
-        (0xFF, 0x98, 0x00),
-        (0x4D, 0xD0, 0xE1),
-        (0x8C, 0x17, 0xE0),
-        (0xFF, 0x57, 0x22),
+    const PALETTE: [(u8, u8, u8); 26] = [
+        (0xff, 0xff, 0xff),
+        (0xff, 0x00, 0x00),
+        (0x00, 0xff, 0x00),
+        (0x00, 0x00, 0xff),
+        (0xd3, 0x2f, 0x2f),
+        (0x8b, 0xc3, 0x4a),
+        (0x03, 0xa9, 0xf4),
+        (0xff, 0x98, 0x00),
+        (0x4d, 0xd0, 0xe1),
+        (0x8c, 0x17, 0xe0),
+        (0xff, 0x57, 0x22),
         (0x00, 0x96, 0x88),
-        (0x9C, 0x27, 0xB0),
-        (0xFF, 0xEB, 0x3B),
-        (0x3F, 0x51, 0xB5),
-        (0xE9, 0x1E, 0x63),
+        (0x9c, 0x27, 0xb0),
+        (0xff, 0xeb, 0x3b),
+        (0x3f, 0x51, 0xb5),
+        (0xe9, 0x1e, 0x63),
+        (0x03, 0x07, 0x1e),
+        (0x37, 0x0f, 0x00),
+        (0x6a, 0x0f, 0x00),
+        (0x9d, 0x0f, 0x00),
+        (0xd0, 0x0f, 0x00),
+        (0x6d, 0x2f, 0x00),
+        (0x7d, 0x3f, 0x10),
+        (0x94, 0x4f, 0x00),
+        (0xaa, 0x2f, 0x00),
+        (0x00, 0x00, 0x00),
     ];
 
     pub fn code(&self) -> usize {
@@ -160,7 +176,7 @@ impl IndexedColor {
 
 impl From<IndexedColor> for RGB8 {
     fn from(color: IndexedColor) -> Self {
-        if color.code > 15 {
+        if color.code > 25 {
             return RGB8::default();
         }
         let (r, g, b) = IndexedColor::PALETTE[color.code];
@@ -175,6 +191,7 @@ pub struct Animation {
     color: IndexedColor,
     cursor: usize,
     frame: usize,
+    seed: usize,
 }
 
 impl Animation {
@@ -184,6 +201,7 @@ impl Animation {
             kind,
             color,
             frame,
+            seed: frame,
         }
     }
 }
@@ -210,6 +228,11 @@ impl Iterator for Animation {
                 }
                 let luma = luma.saturating_sub(5 - (self.frame >> 1) % 6);
                 self.color.with_luma(luma)
+            }
+            AnimationKind::Fire => {
+                self.seed = self.seed * 16_807 % 0x7fff_ffff;
+                let rnd = ((self.frame + self.seed) as u8) as usize;
+                self.color.with_code(21 + rnd % 4)
             }
             AnimationKind::Overheat if self.frame % 10 < 5 => {
                 let color = self.color;
