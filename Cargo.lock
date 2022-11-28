@@ -272,7 +272,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "ir-smart-led-controller"
+name = "lantern-controller"
 version = "0.0.1"
 dependencies = [
  "cortex-m",

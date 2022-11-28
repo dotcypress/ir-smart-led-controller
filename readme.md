@@ -1,6 +1,6 @@
-# ir-smart-led-controller
+# lantern-controller
 
-IR Remote Controller for WS2812(or analog) LED Strip.
+IR Remote Controller for my lantern.
 
 <img width="640" src="pcb/ir-smart-led-controller.png" >
 
@@ -9,7 +9,6 @@ IR Remote Controller for WS2812(or analog) LED Strip.
 - [Schematics](pcb/ir-smart-led-controller.pdf)
 - [Gerber files](pcb/ir-smart-led-controller.zip)
 - [BOM](pcb/ir-smart-led-controller.csv)
-
 
 ## License
 
